@@ -1,4 +1,4 @@
-use crate::{ArrayData, ArrayIndex, Bitmap, Nullable};
+use crate::{Length, Nullable};
 use std::{hint::unreachable_unchecked, ops::Deref};
 
 /// Variants for nullable and non-nullable data.
@@ -33,46 +33,9 @@ enum RawValidity<T, const N: bool> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Validity<T, const N: bool>(RawValidity<T, N>);
 
-impl<T, const N: bool> Validity<T, N> {
-    /// Returns a reference to the data wrapped by this [Validity].
-    /// This uses the deref impl to either get the data from the [Nullable] or
-    /// directly in the case of non-nullable data.
-    pub(crate) fn data(&self) -> &T {
-        match (N, &self.0) {
-            (false, RawValidity::Valid(data)) => data,
-            (true, RawValidity::Nullable(nullable)) => nullable.data(),
-            // Safety:
-            // - The const generic `N` encodes the discriminant.
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-}
-
-impl<T> Validity<T, true> {
-    /// Returns a new Validity with nullable data.
-    pub(crate) fn nullable(validity: Bitmap, data: T) -> Self {
-        // Safety:
-        // - Nullable: `N` is `true` so it doesn't break the const generic
-        //   discriminant encoding.
-        Self(RawValidity::Nullable(Nullable::new(data, validity)))
-    }
-}
-
-impl<T, const N: bool> ArrayIndex<usize> for Validity<T, N>
+impl<T, const N: bool> Length for Validity<T, N>
 where
-    T: Deref,
-    <T as Deref>::Target: ArrayIndex<usize>,
-{
-    type Output = <<T as Deref>::Target as ArrayIndex<usize>>::Output;
-
-    fn index(&self, index: usize) -> Self::Output {
-        self.deref().index(index)
-    }
-}
-
-impl<T, const N: bool> ArrayData for Validity<T, N>
-where
-    T: ArrayData,
+    T: Length,
 {
     fn len(&self) -> usize {
         match (N, &self.0) {
@@ -83,66 +46,139 @@ where
             _ => unsafe { unreachable_unchecked() },
         }
     }
-
-    fn is_null(&self, index: usize) -> bool {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(index: usize, len: usize) -> ! {
-            panic!("is_null index (is {}) should be < len (is {})", index, len);
-        }
-        match (N, &self.0) {
-            (false, _) => {
-                let len = self.len();
-                if index >= len {
-                    assert_failed(index, len);
-                }
-                false
-            }
-            (true, RawValidity::Nullable(nullable)) => nullable.is_null(index),
-            // Safety:
-            // - The const generic `N` encodes the discriminant.
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-    fn null_count(&self) -> usize {
-        match (N, &self.0) {
-            (false, _) => 0,
-            (true, RawValidity::Nullable(nullable)) => nullable.null_count(),
-            // Safety:
-            // - The const generic `N` encodes the discriminant.
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-    fn is_valid(&self, index: usize) -> bool {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(index: usize, len: usize) -> ! {
-            panic!("is_valid index (is {}) should be < len (is {})", index, len);
-        }
-        match (N, &self.0) {
-            (false, _) => {
-                let len = self.len();
-                if index >= len {
-                    assert_failed(index, len);
-                }
-                true
-            }
-            (true, RawValidity::Nullable(nullable)) => nullable.is_valid(index),
-            // Safety:
-            // - The const generic `N` encodes the discriminant.
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-    fn valid_count(&self) -> usize {
-        match (N, &self.0) {
-            (false, RawValidity::Valid(data)) => data.len(),
-            (true, RawValidity::Nullable(nullable)) => nullable.valid_count(),
-            // Safety:
-            // - The const generic `N` encodes the discriminant.
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
 }
+
+// impl<T: Length, const N: bool> Validity<T, N> {
+//     /// Returns a reference to the data wrapped by this [Validity].
+//     /// This uses the deref impl to either get the data from the [Nullable] or
+//     /// directly in the case of non-nullable data.
+//     pub(crate) fn data(&self) -> &T {
+//         match (N, &self.0) {
+//             (false, RawValidity::Valid(data)) => data,
+//             (true, RawValidity::Nullable(nullable)) => nullable.data(),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+
+//     pub fn is_null(&self, index: usize) -> bool {
+//         #[cold]
+//         #[inline(never)]
+//         fn assert_failed(index: usize, len: usize) -> ! {
+//             panic!("is_null index (is {}) should be < len (is {})", index, len);
+//         }
+//         match (N, &self.0) {
+//             (false, _) => {
+//                 let len = self.data().len();
+//                 if index >= len {
+//                     assert_failed(index, len);
+//                 }
+//                 false
+//             }
+//             (true, RawValidity::Nullable(nullable)) => nullable.is_null(index),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+// }
+
+// impl<T> Validity<T, true> {
+//     /// Returns a new Validity with nullable data.
+//     pub(crate) fn nullable(validity: Bitmap, data: T) -> Self {
+//         // Safety:
+//         // - Nullable: `N` is `true` so it doesn't break the const generic
+//         //   discriminant encoding.
+//         Self(RawValidity::Nullable(Nullable::new(data, validity)))
+//     }
+// }
+
+// impl<T, const N: bool> ArrayIndex<usize> for Validity<T, N>
+// where
+//     // T: Deref,
+//     <T as Deref>::Target: ArrayIndex<usize>,
+// {
+//     type Output = <<T as Deref>::Target as ArrayIndex<usize>>::Output;
+
+//     fn index(&self, index: usize) -> Self::Output {
+//         self.deref().index(index)
+//     }
+// }
+
+// impl<T, const N: bool> ArrayData for Validity<T, N>
+// where
+//     T: ArrayData,
+// {
+//     fn len(&self) -> usize {
+//         match (N, &self.0) {
+//             (false, RawValidity::Valid(data)) => data.len(),
+//             (true, RawValidity::Nullable(nullable)) => nullable.len(),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+
+//     fn is_null(&self, index: usize) -> bool {
+//         #[cold]
+//         #[inline(never)]
+//         fn assert_failed(index: usize, len: usize) -> ! {
+//             panic!("is_null index (is {}) should be < len (is {})", index, len);
+//         }
+//         match (N, &self.0) {
+//             (false, _) => {
+//                 let len = self.len();
+//                 if index >= len {
+//                     assert_failed(index, len);
+//                 }
+//                 false
+//             }
+//             (true, RawValidity::Nullable(nullable)) => nullable.is_null(index),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+//     fn null_count(&self) -> usize {
+//         match (N, &self.0) {
+//             (false, _) => 0,
+//             (true, RawValidity::Nullable(nullable)) => nullable.null_count(),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+//     fn is_valid(&self, index: usize) -> bool {
+//         #[cold]
+//         #[inline(never)]
+//         fn assert_failed(index: usize, len: usize) -> ! {
+//             panic!("is_valid index (is {}) should be < len (is {})", index, len);
+//         }
+//         match (N, &self.0) {
+//             (false, _) => {
+//                 let len = self.len();
+//                 if index >= len {
+//                     assert_failed(index, len);
+//                 }
+//                 true
+//             }
+//             (true, RawValidity::Nullable(nullable)) => nullable.is_valid(index),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+//     fn valid_count(&self) -> usize {
+//         match (N, &self.0) {
+//             (false, RawValidity::Valid(data)) => data.len(),
+//             (true, RawValidity::Nullable(nullable)) => nullable.valid_count(),
+//             // Safety:
+//             // - The const generic `N` encodes the discriminant.
+//             _ => unsafe { unreachable_unchecked() },
+//         }
+//     }
+// }
 
 impl<T> Deref for Validity<T, false> {
     type Target = T;
@@ -204,54 +240,51 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Bitmap, Buffer, ALIGNMENT};
+    use crate::{Bitmap, Buffer, ALIGN};
 
     #[test]
     fn data() {
-        let valid: Validity<Buffer<_, ALIGNMENT>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
-        assert_eq!(&valid.data()[..], &[1, 2, 3, 4]);
+        let valid: Validity<Buffer<_, ALIGN>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
+        assert_eq!(&valid[..], &[1, 2, 3, 4]);
 
-        let nullable: Validity<Buffer<_, ALIGNMENT>, true> =
-            vec![Some(1u8), None, Some(3), Some(4)]
-                .into_iter()
-                .collect();
+        let nullable: Validity<Buffer<_, ALIGN>, true> = vec![Some(1u8), None, Some(3), Some(4)]
+            .into_iter()
+            .collect();
         assert_eq!(&nullable.data()[..], &[1, u8::default(), 3, 4]);
     }
 
     #[test]
     fn array_data() {
-        let valid: Validity<Buffer<_, ALIGNMENT>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
+        let valid: Validity<Buffer<_, ALIGN>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
         assert_eq!(valid.len(), 4);
-        assert!(!valid.is_null(1));
-        assert_eq!(valid.null_count(), 0);
-        assert!(valid.is_valid(1));
-        assert_eq!(valid.valid_count(), 4);
+        // assert!(!valid.is_null(1));
+        // assert_eq!(valid.null_count(), 0);
+        // assert!(valid.is_valid(1));
+        // assert_eq!(valid.valid_count(), 4);
 
-        let nullable: Validity<Buffer<_, ALIGNMENT>, true> =
-            vec![Some(1u8), None, Some(3), Some(4)]
-                .into_iter()
-                .collect();
+        let nullable: Validity<Buffer<_, ALIGN>, true> = vec![Some(1u8), None, Some(3), Some(4)]
+            .into_iter()
+            .collect();
         assert_eq!(nullable.len(), 4);
-        assert!(!nullable.is_null(0));
-        assert!(nullable.is_null(1));
+        // assert!(!nullable.is_null(0));
+        // assert!(nullable.is_null(1));
         assert_eq!(nullable.null_count(), 1);
-        assert!(nullable.is_valid(0));
-        assert!(!nullable.is_valid(1));
+        // assert!(nullable.is_valid(0));
+        // assert!(!nullable.is_valid(1));
         assert_eq!(nullable.valid_count(), 3);
     }
 
     #[test]
     fn deref() {
-        let valid: Validity<Buffer<_, ALIGNMENT>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
+        let valid: Validity<Buffer<_, ALIGN>, false> = vec![1u8, 2, 3, 4].into_iter().collect();
         assert_eq!(valid.len(), 4);
 
         let valid: Validity<Bitmap, false> = vec![true, false, true, true].into_iter().collect();
         assert_eq!(valid.len(), 4);
 
-        let nullable: Validity<Buffer<_, ALIGNMENT>, true> =
-            vec![Some(1u8), None, Some(3), Some(4)]
-                .into_iter()
-                .collect();
+        let nullable: Validity<Buffer<_, ALIGN>, true> = vec![Some(1u8), None, Some(3), Some(4)]
+            .into_iter()
+            .collect();
         assert_eq!(nullable.len(), 4);
         assert_eq!(
             nullable.validity(),

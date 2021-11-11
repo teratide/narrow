@@ -5,6 +5,9 @@
 mod primitive;
 pub use primitive::*;
 
+mod length;
+pub use length::*;
+
 mod buffer;
 pub use buffer::*;
 
@@ -17,14 +20,14 @@ pub use nullable::*;
 mod validity;
 pub use validity::*;
 
-mod offset;
-pub use offset::*;
+// mod offset;
+// pub use offset::*;
 
-mod array;
-pub use array::*;
+// mod array;
+// pub use array::*;
 
-// Export derive macro(s).
-pub use narrow_derive::*;
+// // Export derive macro(s).
+// pub use narrow_derive::*;
 
-// Allow writing derive macro tests in this crate.
-extern crate self as narrow;
+// // Allow writing derive macro tests in this crate.
+// extern crate self as narrow;
